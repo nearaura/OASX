@@ -57,6 +57,7 @@ dependencies:
   sqflite: ^2.3.0
   dio_cache_interceptor: ^3.5.0
   dio_cache_interceptor_file_store: ^1.2.3
+  path: ^1.9.0
   path_provider: ^2.1.1
   file_picker: ^8.0.7 # 选择文件夹
   shell: ^2.0.0

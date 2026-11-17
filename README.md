@@ -70,3 +70,19 @@ Tools • Dart 3.6.0 • DevTools 2.40.2
 
 如果你是这方面的或者是认识这方面的朋友，都欢迎邀请为此创作，咱们不要版权，你的还是你的。
 
+
+### 本地 OAS 服务的运行环境
+
+OASX 的 Server 页面从所选 OAS 根目录下的 `config/deploy.yaml` 读取运行环境：
+
+```yaml
+Deploy:
+  Python:
+    PythonExecutable: './.venv/Scripts/python.exe'
+  Git:
+    GitExecutable: 'D:/software/Git/bin/git.exe'
+```
+
+Python 和 Git 可使用绝对路径，也可使用相对于 OAS 根目录的路径。配置指向的文件必须存在；使用源码和虚拟环境时无需额外创建 `toolkit`。整合包仍可配置原有的 `./toolkit/...` 路径。
+
+服务启动时使用配置中的 Python，先执行 `-m deploy.installer`，成功后再执行 `server.py`。Python、Git 以及可选的 `Deploy.Adb.AdbExecutable` 所在目录会加入子进程的 PATH，并保留已有 PATH。修改配置后保存会重新检查路径。
