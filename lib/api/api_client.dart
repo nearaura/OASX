@@ -61,13 +61,17 @@ class ApiClient {
   }
 
   /// common request method
-  Future<ApiResult<T>> request<T>(Future<Result<T>> Function() apiFn) async {
+  Future<ApiResult<T>> request<T>(
+    Future<Result<T>> Function() apiFn, {
+    bool showErrors = true,
+  }) async {
     try {
       final res = await apiFn();
       return res.when(
         success: (data) => ApiResult.success(data),
         failure: (msg, code) {
           printError(info: '${I18n.network_error_code}: $msg | $code'.tr);
+          if (!showErrors) return ApiResult.failure(msg, code);
           switch (code) {
             case 403:
               break;
@@ -83,7 +87,7 @@ class ApiClient {
       );
     } catch (e) {
       printError(info: '${I18n.network_error.tr}: $e');
-      showNetErrSnackBar();
+      if (showErrors) showNetErrSnackBar();
       return ApiResult.failure(e.toString());
     }
   }
@@ -118,21 +122,25 @@ class ApiClient {
   }
 
   Future<GithubVersionModel> getGithubVersion() async {
-    final res = await request(() => get(
-          updateUrlGithub,
-          options: buildCacheOptions(const Duration(days: 7)),
-          decodeType: GithubVersionModel(),
-        ));
+    final res = await request(
+        () => get(
+              updateUrlGithub,
+              options: buildCacheOptions(const Duration(days: 7)),
+              decodeType: GithubVersionModel(),
+            ),
+        showErrors: false);
     return res.isSuccess ? res.data : GithubVersionModel();
   }
 
   Future<ReadmeGithubModel> getGithubReadme() async {
-    final res = await request(() => get(
-          readmeUrlGithub,
-          options: buildCacheOptions(const Duration(days: 7),
-              options: Options(extra: {"cache": true})),
-          decodeType: ReadmeGithubModel(),
-        ));
+    final res = await request(
+        () => get(
+              readmeUrlGithub,
+              options: buildCacheOptions(const Duration(days: 7),
+                  options: Options(extra: {"cache": true})),
+              decodeType: ReadmeGithubModel(),
+            ),
+        showErrors: false);
     return res.isSuccess ? res.data : ReadmeGithubModel();
   }
 
@@ -154,8 +162,8 @@ class ApiClient {
   }
 
   Future<Map?> exportDiagnostic({String configName = ''}) async {
-    final res = await request(
-        () => get('/home/export_diagnostic', queryParameters: {'config_name': configName}));
+    final res = await request(() => get('/home/export_diagnostic',
+        queryParameters: {'config_name': configName}));
     if (res.isSuccess && res.data is Map) {
       return res.data as Map;
     }
