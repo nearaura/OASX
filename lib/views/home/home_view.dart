@@ -54,7 +54,9 @@ class HomeView extends StatelessWidget {
     GithubVersionModel githubVersionModel =
         await ApiClient().getGithubVersion();
     String currentVersion = await getCurrentVersion();
-    String githubVersion = githubVersionModel.version ?? 'v0.0.0';
+    final githubVersion = githubVersionModel.version;
+    // A repository with no published releases returns 404 from GitHub.
+    if (githubVersion == null) return;
     printInfo(info: 'Github Version: $githubVersion');
     String githubUpdateInfo = githubVersionModel.body ?? 'Something wrong';
 
