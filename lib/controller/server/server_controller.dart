@@ -9,145 +9,101 @@ class ServerController extends GetxController with LogMixin {
   final deployContent = ''.obs;
   Shell? shell;
   var shellController = ShellLinesController();
+  ServerRuntime? _runtime;
+  bool _starting = false;
 
   @override
   void onInit() {
     rootPathServer.value =
         Get.find<SettingsController>().storage.read('rootPathServer') ??
             'Please set OAS root path';
-    shell = getShell;
     shellController.stream.listen((event) {
       addLog('INFO: $event');
     });
+    readDeploy();
     rootPathAuthenticated.value = authenticatePath(rootPathServer.value);
-    if (rootPathAuthenticated.value) {
-      readDeploy();
-    }
     super.onInit();
   }
 
   void updateRootPathServer(String value) {
-    if (authenticatePath(value)) {
-      rootPathAuthenticated.value = true;
-    } else {
-      rootPathAuthenticated.value = false;
-    }
-    // value = value.replaceAll('\\', '\\\\');
     rootPathServer.value = value;
-    shell = getShell;
     Get.find<SettingsController>()
         .storage
         .write('rootPathServer', rootPathServer.value);
-    if (rootPathAuthenticated.value) {
-      readDeploy();
-    }
+    readDeploy();
+    rootPathAuthenticated.value = authenticatePath(value);
   }
 
   bool authenticatePath(String root) {
-    root.replaceAll('\\', '/');
+    _runtime = null;
     try {
-      // 先是判断根目录
-      Directory rootDir = Directory(root);
-      if (!rootDir.existsSync()) {
-        return false;
-      }
-      // 然后是判断python是否存在
-      File python = File('${rootDir.path}/toolkit/python.exe');
-      if (!python.existsSync()) {
-        return false;
-      }
-      // 然后判断git是否存在
-      File git = File('${rootDir.path}/toolkit/Git/cmd/git.exe');
-      if (!git.existsSync()) {
-        return false;
-      }
-      // 然后判断安装器是否存在
-      File installer = File('${rootDir.path}/deploy/installer.py');
-      if (!installer.existsSync()) {
-        return false;
-      }
-      // 然后判断deploy是否存在
-      File deploy = File('${rootDir.path}/config/deploy.yaml');
-      if (!deploy.existsSync()) {
-        return false;
-      }
+      _runtime = ServerRuntime.load(root);
+      return true;
     } catch (e) {
-      printError(info: e.toString());
+      addLog('ERROR: $e');
       return false;
     }
-
-    return true;
   }
 
-  String get pathGit => '${rootPathServer.value}\\toolkit\\Git\\mingw64\\bin"';
-  String get pathPython => '${rootPathServer.value}\\toolkit';
-  String get pathAdb =>
-      '${rootPathServer.value}\\toolkit\\Lib\\site-packages\\adbutils\\binaries';
-  String get pathScripts => '${rootPathServer.value}\\toolkit\\Scripts';
-  Map<String, String> get pathPATH => {
-        'PATH':
-            '${rootPathServer.value},$pathGit,$pathPython,$pathAdb,$pathScripts'
-      };
   Shell get getShell => Shell(
-        workingDirectory: rootPathServer.value,
-        runInShell: true,
-        environment: pathPATH,
+        workingDirectory: _runtime!.root,
+        runInShell: false,
+        environment: _runtime!.environment,
         stdout: shellController.sink,
+        stderr: shellController.sink,
         verbose: false,
       );
 
-  Future<void> runShell(String command) async {
+  Future<void> run() async {
+    if (_starting) return;
+    _starting = true;
+    clearLog();
     try {
-      var result = await shell!.run(command);
-      printInfo(info: result.errText);
-    } on ShellException catch (e) {
-      addLog('ERROR: ${e.toString()}');
+      // Read again so edits made outside OASX also take effect.
+      rootPathAuthenticated.value = authenticatePath(rootPathServer.value);
+      if (!rootPathAuthenticated.value) return;
+      shell?.kill();
+      shell = getShell;
+      addLog('INFO: OAS working directory: ${_runtime!.root}');
+      await shell!.runExecutableArguments(
+        _runtime!.python,
+        ['-m', 'deploy.installer'],
+      );
+      // The installer can update deploy.yaml. Validate it before starting OAS.
+      rootPathAuthenticated.value = authenticatePath(rootPathServer.value);
+      if (!rootPathAuthenticated.value) return;
+      shell = getShell;
+      addLog('INFO: Start OAS');
+      await shell!.runExecutableArguments(_runtime!.python, ['server.py']);
+    } catch (e) {
+      addLog('ERROR: $e');
+    } finally {
+      _starting = false;
     }
   }
 
-  void run() {
-    clearLog();
-    shell!.kill();
-    runShell('echo OAS working directory: ').then((value) => null);
-    runShell('pwd').then((value) => null);
-    runShell('python -m deploy.installer').then((value) => null);
-    runShell('echo Start OAS').then((value) => null);
-    runShell('taskkill /f /t /im pythonw.exe').then((value) => null);
-    runShell(".\\toolkit\\pythonw.exe  server.py").then((value) => null);
-  }
-
   void readDeploy() {
-    String filePath = '${rootPathServer.value}\\config\\deploy.yaml';
+    final file = File('${rootPathServer.value}/config/deploy.yaml');
     try {
-      File file = File(filePath);
-      if (file.existsSync()) {
-        deployContent.value = file.readAsStringSync();
-        return;
-      } else {
-        deployContent.value = 'File not found';
-        return;
-      }
+      deployContent.value =
+          file.existsSync() ? file.readAsStringSync() : 'File not found';
     } catch (e) {
       deployContent.value = 'Error reading file: $e';
-      return;
     }
   }
 
   void writeDeploy(String value) {
-    String filePath = '${rootPathServer.value}\\config\\deploy.yaml';
+    final file = File('${rootPathServer.value}/config/deploy.yaml');
     deployContent.value = value;
     try {
-      File file = File(filePath);
-      if (file.existsSync()) {
-        file.writeAsStringSync(deployContent.value);
-        return;
-      } else {
+      if (!file.existsSync()) {
         deployContent.value = 'File not found';
         return;
       }
+      file.writeAsStringSync(value);
+      rootPathAuthenticated.value = authenticatePath(rootPathServer.value);
     } catch (e) {
       deployContent.value = 'Error writing file: $e';
-      return;
     }
   }
 }
