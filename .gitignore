@@ -47,3 +47,4 @@ app.*.map.json
 /outputs/*
 /outpus/*
 /doc
+.claude/settings.local.json
